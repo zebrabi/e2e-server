@@ -2,22 +2,39 @@
 require_once 'parseReport.php';
 
 function currentDirectoryTitle() {
-	$currentDirectory = getcwd();
-	$currentDirectory = str_replace('/var/www/html', '', $currentDirectory);
+    $currentDirectory = getcwd();
+    $currentDirectory = str_replace('/var/www/html', '', $currentDirectory);
 
-	echo "<html>";
-	echo "<head>";
-	echo "<title>E2E Reports</title>";
-	echo "</head>";
-	echo "<body>";
-	echo "<h1>Index of $currentDirectory</h1>";
+    echo "<html>";
+    echo "<head>";
+    echo "<title>E2E Reports</title>";
+    echo "<style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .filters {
+            margin: 20px 0;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #f9f9f9;
+        }
+        .filters label {
+            margin-right: 15px;
+        }
+        .filters input[type='date'] {
+            margin-right: 15px;
+        }
+        table { border-collapse: collapse; }
+        td { padding: 6px 10px; vertical-align: top; }
+    </style>";
+    echo "</head>";
+    echo "<body>";
+    echo "<h1>Index of $currentDirectory</h1>";
 }
 
-function closeHtml(){
-	echo "</body>";
-	echo "</html>";
-
-}	
+function closeHtml() {
+    echo "</body>";
+    echo "</html>";
+}
 
 function getSize($path) {
     if (is_file($path)) {
@@ -33,7 +50,7 @@ function getSize($path) {
         return $size;
     }
 
-    return false; // Return false if the path is neither a file nor a directory
+    return false;
 }
 
 function humanReadableSize($size) {
@@ -48,33 +65,84 @@ function humanReadableSize($size) {
     return round($size, 2) . ' ' . $units[$unitIndex];
 }
 
-function reportsList($dirsOnly = true){
+function renderFilters() {
+    $selectedTypes = $_GET['type'] ?? [];
+    $fromDate = $_GET['from'] ?? '';
+    $toDate = $_GET['to'] ?? '';
+
+    echo "<form method='get' class='filters'>";
+    echo "<label><input type='checkbox' name='type[]' value='tables' " . (in_array('tables', $selectedTypes) ? 'checked' : '') . "> tables</label>";
+    echo "<label><input type='checkbox' name='type[]' value='charts' " . (in_array('charts', $selectedTypes) ? 'checked' : '') . "> charts</label>";
+    echo "<label><input type='checkbox' name='type[]' value='cards' " . (in_array('cards', $selectedTypes) ? 'checked' : '') . "> cards</label>";
+
+    echo "<label>From: <input type='date' name='from' value='" . htmlspecialchars($fromDate) . "'></label>";
+    echo "<label>To: <input type='date' name='to' value='" . htmlspecialchars($toDate) . "'></label>";
+
+    echo "<button type='submit'>Filter</button> ";
+    echo "<a href='?'>Reset</a>";
+    echo "</form>";
+}
+
+function matchesTypeFilter($itemName, $selectedTypes) {
+    if (empty($selectedTypes)) {
+        return true;
+    }
+
+    $itemNameLower = strtolower($itemName);
+
+    foreach ($selectedTypes as $type) {
+        if (strpos($itemNameLower, strtolower($type)) !== false) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function matchesDateFilter($timestamp, $fromDate, $toDate) {
+    if (!empty($fromDate)) {
+        $fromTimestamp = strtotime($fromDate . ' 00:00:00');
+        if ($timestamp < $fromTimestamp) {
+            return false;
+        }
+    }
+
+    if (!empty($toDate)) {
+        $toTimestamp = strtotime($toDate . ' 23:59:59');
+        if ($timestamp > $toTimestamp) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function reportsList($dirsOnly = true) {
     $pattern = './*';
     $flags = $dirsOnly ? GLOB_ONLYDIR : 0;
     $items = glob($pattern, $flags);
 
-    // Exclude index.php from the list
     $items = array_filter($items, function($item) {
         return basename($item) !== 'index.php';
     });
-    
+
     usort($items, function($a, $b) {
         return filemtime($b) - filemtime($a);
     });
 
     echo "<table>";
     echo "<tr><td><a href='..'>../</a></td></tr>";
-    
+
     foreach ($items as $item) {
         $size = getSize($item);
         $readableSize = humanReadableSize($size);
         $itemName = str_replace('./', '', $item);
-        
+
         echo "<tr><td><a href='{$itemName}'>{$itemName}</a></td>";
         echo "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" . date("Y-m-d H:i", filemtime($item)) . "</td>";
         echo "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[{$readableSize}]</td></tr>";
     }
-    
+
     echo "</table>";
 }
 
@@ -83,9 +151,33 @@ function reportsListWithResults($dirsOnly = true) {
     $flags = $dirsOnly ? GLOB_ONLYDIR : 0;
     $items = glob($pattern, $flags);
 
-    // Exclude index.php from the list
     $items = array_filter($items, function($item) {
         return basename($item) !== 'index.php';
+    });
+
+    $selectedTypes = $_GET['type'] ?? [];
+    $fromDate = $_GET['from'] ?? '';
+    $toDate = $_GET['to'] ?? '';
+
+    $items = array_filter($items, function($item) use ($selectedTypes, $fromDate, $toDate) {
+        $itemName = str_replace('./', '', $item);
+        $resultFile = $item . DIRECTORY_SEPARATOR . "test-results.json";
+
+        if (!file_exists($resultFile)) {
+            return false;
+        }
+
+        $createdTime = filemtime($resultFile);
+
+        if (!matchesTypeFilter($itemName, $selectedTypes)) {
+            return false;
+        }
+
+        if (!matchesDateFilter($createdTime, $fromDate, $toDate)) {
+            return false;
+        }
+
+        return true;
     });
 
     usort($items, function($a, $b) {
@@ -94,15 +186,12 @@ function reportsListWithResults($dirsOnly = true) {
         return filemtime($result_b) - filemtime($result_a);
     });
 
+    renderFilters();
 
     echo "<table>";
     echo "<tr><td><a href='..'>../</a></td><td></td></tr>";
 
-    // Ensure output is sent immediately
-    //ob_end_flush();
-    //echo str_pad('', 4096); // Send a buffer to push output
     flush();
-    //ob_start();
 
     foreach ($items as $item) {
         $size = getSize($item);
@@ -115,20 +204,14 @@ function reportsListWithResults($dirsOnly = true) {
         $summary = parsePwReport($item);
         echo $summary;
 
-
         $result_file = $item . DIRECTORY_SEPARATOR . "test-results.json";
 
         echo "</td><td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;" . date("Y-m-d H:i", filemtime($result_file)) . "</td>";
         echo "<td>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[{$readableSize}]</td></tr>";
         flush();
-
     }
 
-	
     echo "</table>";
     flush();
-
 }
-
-
 ?>

@@ -74,6 +74,14 @@ function parsePwReport(string $pwReport): string {
         return "File not found: $pwReportPath\n";
     }
 
+    // Avoid loading very large report files into memory
+    $maxParseSize = 10 * 1024 * 1024; // 10 MB
+    $fileSize = filesize($pwReportPath);
+
+    if ($fileSize !== false && $fileSize > $maxParseSize) {
+        return "Report too large to parse automatically.\n";
+    }
+
     $pwReportString = file_get_contents($pwReportPath);
     $testResults = json_decode($pwReportString, true);
     
