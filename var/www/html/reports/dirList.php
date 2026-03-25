@@ -66,14 +66,18 @@ function humanReadableSize($size) {
 }
 
 function renderFilters() {
-    $selectedTypes = $_GET['type'] ?? [];
+    $tables = isset($_GET['tables']);
+    $charts = isset($_GET['charts']);
+    $cards = isset($_GET['cards']);
+
     $fromDate = $_GET['from'] ?? '';
     $toDate = $_GET['to'] ?? '';
 
     echo "<form method='get' class='filters'>";
-    echo "<label><input type='checkbox' name='type[]' value='tables' " . (in_array('tables', $selectedTypes) ? 'checked' : '') . "> tables</label>";
-    echo "<label><input type='checkbox' name='type[]' value='charts' " . (in_array('charts', $selectedTypes) ? 'checked' : '') . "> charts</label>";
-    echo "<label><input type='checkbox' name='type[]' value='cards' " . (in_array('cards', $selectedTypes) ? 'checked' : '') . "> cards</label>";
+
+    echo "<label><input type='checkbox' name='tables' " . ($tables ? 'checked' : '') . "> tables</label>";
+    echo "<label><input type='checkbox' name='charts' " . ($charts ? 'checked' : '') . "> charts</label>";
+    echo "<label><input type='checkbox' name='cards' " . ($cards ? 'checked' : '') . "> cards</label>";
 
     echo "<label>From: <input type='date' name='from' value='" . htmlspecialchars($fromDate) . "'></label>";
     echo "<label>To: <input type='date' name='to' value='" . htmlspecialchars($toDate) . "'></label>";
@@ -155,7 +159,12 @@ function reportsListWithResults($dirsOnly = true) {
         return basename($item) !== 'index.php';
     });
 
-    $selectedTypes = $_GET['type'] ?? [];
+    $selectedTypes = [];
+
+    if (isset($_GET['tables'])) $selectedTypes[] = 'tables';
+    if (isset($_GET['charts'])) $selectedTypes[] = 'charts';
+    if (isset($_GET['cards'])) $selectedTypes[] = 'cards';
+
     $fromDate = $_GET['from'] ?? '';
     $toDate = $_GET['to'] ?? '';
 
